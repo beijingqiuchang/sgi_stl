@@ -105,6 +105,7 @@ __STL_BEGIN_NAMESPACE
 # endif
 #endif
 
+// 第一级配置器
 template <int __inst>
 class __malloc_alloc_template {
 
@@ -122,6 +123,9 @@ public:
   static void* allocate(size_t __n)
   {
     void* __result = malloc(__n);
+    // 如果申请失败，就会调用_S_oom_malloc
+    // _S_oom_malloc内部会判断用户是否注册申请失败的处理回调
+    // 如果没有，就直接throw::bad_alloc
     if (0 == __result) __result = _S_oom_malloc(__n);
     return __result;
   }
@@ -163,7 +167,7 @@ __malloc_alloc_template<__inst>::_S_oom_malloc(size_t __n)
 
     for (;;) {
         __my_malloc_handler = __malloc_alloc_oom_handler;
-        if (0 == __my_malloc_handler) { __THROW_BAD_ALLOC; }
+        if (0 == __my_malloc_handler) { __THROW_BAD_ALLOC; }  // 没注册就抛异常
         (*__my_malloc_handler)();
         __result = malloc(__n);
         if (__result) return(__result);
@@ -285,6 +289,7 @@ typedef malloc_alloc single_client_alloc;
   enum {_NFREELISTS = 16}; // _MAX_BYTES/_ALIGN
 #endif
 
+// 第二级配置器
 template <bool threads, int inst>
 class __default_alloc_template {
 
@@ -292,9 +297,10 @@ private:
   // Really we should use static const int x = N
   // instead of enum { x = N }, but few compilers accept the former.
 #if ! (defined(__SUNPRO_CC) || defined(__GNUC__))
-    enum {_ALIGN = 8};
-    enum {_MAX_BYTES = 128};
-    enum {_NFREELISTS = 16}; // _MAX_BYTES/_ALIGN
+    enum {_ALIGN = 8};  // 小型区块的上调边界，也就是传进来字节后，按照8的倍数分配
+    enum {_MAX_BYTES = 128};  // 小型区块的上限
+    // free-lists个数: 8,16,24,32,40,48,56,64,72,80,88,96,104,112,120,128(最大是128bytes，最小是8)
+    enum {_NFREELISTS = 16}; // _MAX_BYTES/_ALIGN  
 # endif
   static size_t
   _S_round_up(size_t __bytes) 
